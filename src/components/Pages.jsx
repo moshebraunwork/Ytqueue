@@ -163,7 +163,7 @@ export function ChannelsPage({
     onAddChannel(url).then((ok) => { if (ok) { setInput(''); setAddOpen(false) } })
   }
 
-  const logoFor = (c) => c.thumbnail_url || channelLogos[c.channel_id]
+  const logoFor = (c) => c.channel_thumbnail_url || c.thumbnail_url || channelLogos[c.channel_id]
 
   if (loading) return <div className="center-state"><span className="spinner" /></div>
   if (error) return (

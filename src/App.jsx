@@ -93,7 +93,10 @@ export default function App() {
   /* ---------- Channel logo map (channel_id -> thumbnail_url) ---------- */
   const channelLogos = useMemo(() => {
     const m = {}
-    channels.forEach((c) => { if (c.thumbnail_url) m[c.channel_id] = c.thumbnail_url })
+    channels.forEach((c) => {
+      const logo = c.channel_thumbnail_url || c.thumbnail_url
+      if (logo) m[c.channel_id] = logo
+    })
     return m
   }, [channels])
 
