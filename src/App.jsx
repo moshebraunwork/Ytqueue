@@ -309,15 +309,16 @@ export default function App() {
       {/* Mobile bottom nav */}
       <nav className="bottomnav">
         <button className={page === 'home' ? 'active' : ''} onClick={() => { setPage('home'); window.scrollTo(0, 0) }}>
-          <HomeIcon size={26} /><span>Home</span>
+          <span className="nav-pill"><HomeIcon size={28} /></span>
+          <span>Home</span>
         </button>
-        <div className="fab-slot">
-          <button className="fab" onClick={() => { setAddVideoNote(null); setAddOpen(true) }} aria-label="Save a video">
-            <PlusIcon size={28} />
-          </button>
-        </div>
+        <button onClick={() => { setAddVideoNote(null); setAddOpen(true) }}>
+          <span className="nav-pill accent"><PlusIcon size={28} /></span>
+          <span>Save</span>
+        </button>
         <button className={page === 'channels' ? 'active' : ''} onClick={() => { setPage('channels'); window.scrollTo(0, 0) }}>
-          <ChannelsIcon size={26} /><span>Channels</span>
+          <span className="nav-pill"><ChannelsIcon size={28} /></span>
+          <span>Channels</span>
         </button>
       </nav>
 
