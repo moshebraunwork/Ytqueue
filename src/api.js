@@ -34,6 +34,20 @@ export function asArray(data) {
   return []
 }
 
+/* ---------- Queue ordering ----------
+ * One rule everywhere: newest-added first, with watched videos pushed to
+ * the back of the line. Shared by every list (Home, Channels, Shorts) so
+ * the order is identical across pages and filters.
+ */
+export function sortQueue(list, watched) {
+  const byAdded = (a, b) => new Date(b.added_at || 0) - new Date(a.added_at || 0)
+  const fresh = [], seen = []
+  for (const v of list) (watched.has(v.video_id) ? seen : fresh).push(v)
+  fresh.sort(byAdded)
+  seen.sort(byAdded)
+  return [...fresh, ...seen]
+}
+
 /* ---------- Duration ---------- */
 export function parseDuration(iso) {
   if (!iso) return { text: '', seconds: 0 }
