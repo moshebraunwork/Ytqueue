@@ -41,7 +41,21 @@ export default function ShortsFeed({
   // Live-value refs so player event callbacks always see the latest.
   const listRef = useRef(list); listRef.current = list
   const activeRef = useRef(active); activeRef.current = active
+  const prevActiveRef = useRef(-1)
   const onWatchedRef = useRef(onWatched); onWatchedRef.current = onWatched
+
+  // Drive a player to the role its slide currently has:
+  //   active     → unmuted, playing (the short you're watching)
+  //   active + 1 → muted, playing off-screen so it *buffers* ahead of time,
+  //                which is what actually makes the next swipe start instantly
+  //   otherwise  → muted + paused, but kept in the window ready to go
+  const applyState = (idx, p) => {
+    try {
+      if (idx === activeRef.current) { p.unMute?.(); p.playVideo?.() }
+      else if (idx === activeRef.current + 1) { p.mute?.(); p.playVideo?.() }
+      else { p.mute?.(); p.pauseVideo?.() }
+    } catch { /* player mid-transition */ }
+  }
 
   // Which slide indices should hold a live player right now.
   const windowIdx = useMemo(() => {
@@ -106,18 +120,19 @@ export default function ShortsFeed({
         const player = new YT.Player(host.firstChild, {
           videoId: video.video_id,
           playerVars: {
-            autoplay: idx === activeRef.current ? 1 : 0,
+            // Start muted so buffering the neighbours is allowed to autoplay;
+            // applyState unmutes the one you're actually watching.
+            autoplay: 1, mute: 1,
             controls: 1, rel: 0, playsinline: 1, fs: 0,
             modestbranding: 1, iv_load_policy: 3,
           },
           events: {
-            onReady: (e) => {
-              if (idx === activeRef.current) { try { e.target.playVideo() } catch { /* noop */ } }
-            },
+            onReady: (e) => applyState(idx, e.target),
             onStateChange: (e) => {
               if (e.data === window.YT.PlayerState.ENDED) {
-                onWatchedRef.current(video)
-                // Loop the short in place, the way YouTube Shorts does.
+                // Only the short you're actually watching counts as watched.
+                if (idx === activeRef.current) onWatchedRef.current(video)
+                // Loop in place (keeps the warming neighbour buffered too).
                 try { e.target.seekTo(0); e.target.playVideo() } catch { /* noop */ }
               }
             },
@@ -126,12 +141,16 @@ export default function ShortsFeed({
         players.set(idx, { player, videoId: video.video_id })
       })
 
-      // Only the centered short plays; neighbours stay paused and ready.
+      // Apply roles. When the centered short actually changed, restart it from
+      // the top — a neighbour that was warming is buffered at 0, so it starts
+      // immediately instead of picking up wherever the muted warm-up reached.
+      const activeChanged = prevActiveRef.current !== activeRef.current
+      prevActiveRef.current = activeRef.current
       players.forEach((entry, idx) => {
-        try {
-          if (idx === activeRef.current) entry.player.playVideo?.()
-          else entry.player.pauseVideo?.()
-        } catch { /* player mid-transition */ }
+        if (idx === activeRef.current && activeChanged) {
+          try { entry.player.seekTo?.(0, true) } catch { /* not ready yet */ }
+        }
+        applyState(idx, entry.player)
       })
     })
     return () => { cancelled = true }
