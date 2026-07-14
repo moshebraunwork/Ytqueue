@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import VideoCard from './VideoCard.jsx'
+import ShortsFeed from './ShortsFeed.jsx'
 import { isShort, timeAgo, formatSeconds, parseDuration } from '../api.js'
 import { PlusIcon } from './Icons.jsx'
 
@@ -20,7 +21,7 @@ const STATUS_OPTS = [
 export function HomePage({
   videos, loading, error, onRetry, search,
   watched, newIds, progress, channelLogos, cardHandlers,
-  onAddVideo, kind, setKind, onPlayList,
+  onAddVideo, kind, setKind, onPlayList, onProgress, onWatched,
 }) {
   const [status, setStatus] = useState('any')
 
@@ -70,26 +71,55 @@ export function HomePage({
     </div>
   )
 
+  const tabsBar = (
+    <div className="tabs-bar">
+      <div className="tabs">
+        {KIND_TABS.map((t) => (
+          <button key={t.id} className={`tab ${kind === t.id ? 'active' : ''}`} onClick={() => setKind(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="status-select-wrap">
+        <select className="status-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status">
+          {STATUS_OPTS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}{o.id === 'new' && newCount > 0 ? ` (${newCount})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
+
+  // Shorts tab is an immersive, full-screen vertical feed rather than a grid.
+  if (kind === 'shorts') {
+    if (filtered.length === 0) {
+      return (
+        <>
+          {tabsBar}
+          <div className="empty-state slim"><h2>No shorts yet</h2><p>Nothing under 60 seconds in your queue right now.</p></div>
+        </>
+      )
+    }
+    return (
+      <ShortsFeed
+        shorts={filtered}
+        watched={watched}
+        channelLogos={channelLogos}
+        onProgress={onProgress}
+        onWatched={onWatched}
+        onToggleWatched={cardHandlers.onToggleWatched}
+        onDelete={cardHandlers.onDelete}
+        onToast={cardHandlers.onToast}
+        onClose={() => setKind('all')}
+      />
+    )
+  }
+
   return (
     <>
-      <div className="tabs-bar">
-        <div className="tabs">
-          {KIND_TABS.map((t) => (
-            <button key={t.id} className={`tab ${kind === t.id ? 'active' : ''}`} onClick={() => setKind(t.id)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="status-select-wrap">
-          <select className="status-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status">
-            {STATUS_OPTS.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}{o.id === 'new' && newCount > 0 ? ` (${newCount})` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      {tabsBar}
 
       {continueWatching.length > 0 && (
         <section className="cw">

@@ -428,6 +428,79 @@ a { color: inherit; }
 .player-chan strong { font-size: 15px; }
 .player-chan span { color: var(--text-2); font-size: 12.5px; }
 
+/* ============ Shorts feed (immersive vertical swipe) ============ */
+.shorts-feed {
+  position: fixed; inset: 0; z-index: 100;
+  background: #000;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  animation: slide-up .22s ease;
+}
+.shorts-feed::-webkit-scrollbar { display: none; }
+
+.shorts-back {
+  position: fixed; top: calc(env(safe-area-inset-top) + 8px); left: 10px; z-index: 20;
+  background: rgba(0, 0, 0, .45);
+}
+
+.short-slide {
+  position: relative;
+  height: 100dvh;
+  scroll-snap-align: start; scroll-snap-stop: always;
+  display: grid; place-items: center;
+  overflow: hidden;
+}
+
+.short-stage {
+  position: relative;
+  height: 100%; width: 100%;
+  max-width: calc(100dvh * 9 / 16);
+  margin: 0 auto;
+  background: #000;
+}
+.short-host, .short-host iframe, .short-thumb { width: 100%; height: 100%; border: none; display: block; }
+.short-thumb { position: relative; }
+.short-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.short-play {
+  position: absolute; inset: 0; margin: auto;
+  width: 64px; height: 64px; border-radius: 50%;
+  background: rgba(0, 0, 0, .5); color: #fff;
+  display: grid; place-items: center; font-size: 22px; padding-left: 4px;
+}
+
+.short-info {
+  position: absolute; left: 0; bottom: calc(env(safe-area-inset-bottom) + 84px);
+  z-index: 10; max-width: 74%;
+  padding: 0 14px;
+  color: #fff; pointer-events: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .7);
+}
+.short-chan { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.short-chan strong { font-size: 14.5px; }
+.short-chan .card-avatar { width: 34px; height: 34px; border: 1.5px solid rgba(255, 255, 255, .85); }
+.short-title {
+  font-size: 14px; line-height: 1.4; font-weight: 500;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+.short-rail {
+  position: absolute; right: 6px; bottom: calc(env(safe-area-inset-bottom) + 84px);
+  z-index: 10;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.rail-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  color: #fff; font-size: 11px; font-weight: 600;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .7);
+  transition: transform .1s;
+}
+.rail-btn:active { transform: scale(.86); }
+.rail-btn.on { color: var(--green); }
+.rail-btn.danger:active { color: var(--accent); }
+
 /* ============ Dialogs / toast ============ */
 .overlay {
   position: fixed; inset: 0; z-index: 200;
