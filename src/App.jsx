@@ -287,6 +287,8 @@ export default function App() {
             kind={kind}
             setKind={setKind}
             onPlayList={playFromList}
+            onProgress={handleProgress}
+            onWatched={handleWatched}
           />
         )}
         {page === 'channels' && (

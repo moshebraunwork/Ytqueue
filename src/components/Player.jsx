@@ -1,25 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { timeAgo, downloadVideo } from '../api.js'
 import { getPlayerPrefs, savePlayerPrefs } from '../storage.js'
+import { loadYouTubeAPI } from '../youtube.js'
 import {
   BackIcon, DownloadIcon, EyeIcon, NextIcon, PrevIcon,
   TrashIcon, YoutubeIcon,
 } from './Icons.jsx'
-
-/* ---------- YouTube IFrame API loader ---------- */
-let ytApiPromise = null
-function loadYouTubeAPI() {
-  if (window.YT && window.YT.Player) return Promise.resolve(window.YT)
-  if (ytApiPromise) return ytApiPromise
-  ytApiPromise = new Promise((resolve) => {
-    const prev = window.onYouTubeIframeAPIReady
-    window.onYouTubeIframeAPIReady = () => { prev?.(); resolve(window.YT) }
-    const tag = document.createElement('script')
-    tag.src = 'https://www.youtube.com/iframe_api'
-    document.head.appendChild(tag)
-  })
-  return ytApiPromise
-}
 
 export default function Player({
   video, playlist, startAt = 0, channelLogo,
