@@ -3,10 +3,15 @@ import { loadYouTubeAPI } from '../youtube.js'
 import { downloadVideo } from '../api.js'
 import { BackIcon, DownloadIcon, EyeIcon, TrashIcon, YoutubeIcon } from './Icons.jsx'
 
+// How many slides on each side of the centered one keep a live player ready.
+const WINDOW = 1
+
 /*
  * Immersive, YouTube-Shorts-style vertical feed. One short per viewport,
- * snap scrolling, and only the centered slide runs a live YouTube player —
- * every other slide is just its thumbnail, so scrolling stays cheap.
+ * snap scrolling. The centered slide plays; its immediate neighbours are
+ * pre-built and paused so swiping to them starts near-instantly instead of
+ * cold-loading a fresh iframe each time. Everything further out is just a
+ * thumbnail, so scrolling a long queue stays cheap.
  */
 export default function ShortsFeed({
   shorts, watched, channelLogos,
@@ -21,19 +26,42 @@ export default function ShortsFeed({
     const live = new Set(shorts.map((v) => v.video_id))
     return order.filter((v) => live.has(v.video_id))
   }, [order, shorts])
+  // Stable across watched changes (same ids/order) so the player-window
+  // effect below doesn't churn every time a short gets marked watched.
+  const listSig = useMemo(() => list.map((v) => v.video_id).join('|'), [list])
 
   const containerRef = useRef(null)
   const slideRefs = useRef([])
-  const playerRef = useRef(null)
+  const playersRef = useRef(new Map()) // slide index -> { player, videoId }
   const [active, setActive] = useState(0)
 
   const activeVideo = list[active]
   const activeId = activeVideo?.video_id
 
-  /* Lock the page behind the feed while it's open. */
+  // Live-value refs so player event callbacks always see the latest.
+  const listRef = useRef(list); listRef.current = list
+  const activeRef = useRef(active); activeRef.current = active
+  const onWatchedRef = useRef(onWatched); onWatchedRef.current = onWatched
+
+  // Which slide indices should hold a live player right now.
+  const windowIdx = useMemo(() => {
+    const s = new Set()
+    for (let d = -WINDOW; d <= WINDOW; d++) {
+      const i = active + d
+      if (i >= 0 && i < list.length) s.add(i)
+    }
+    return s
+  }, [active, list.length])
+
+  /* Lock the page behind the feed while it's open; tear down every player. */
   useEffect(() => {
     document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = '' }
+    const players = playersRef.current
+    return () => {
+      document.body.style.overflow = ''
+      players.forEach((e) => { try { e.player.destroy() } catch { /* noop */ } })
+      players.clear()
+    }
   }, [])
 
   /* Which slide is centered right now → becomes the active (playing) short. */
@@ -50,52 +78,72 @@ export default function ShortsFeed({
     return () => io.disconnect()
   }, [list])
 
-  /* Mount a fresh player in the active slide; tear it down when we move on.
-     Keyed on the active short's id, so auto-marking it watched (which changes
-     `watched` but not the id) never restarts playback. */
+  /* Keep a small window of players mounted, play the centered one and pause
+     the rest. Neighbours are built ahead of time, so a swipe just resumes an
+     already-loaded player instead of creating one from scratch. */
   useEffect(() => {
-    const video = activeVideo
-    if (!video) return
     let cancelled = false
-
     loadYouTubeAPI().then((YT) => {
       if (cancelled) return
-      const host = slideRefs.current[active]?.querySelector('.short-host')
-      if (!host) return
-      host.innerHTML = '<div></div>'
-      playerRef.current = new YT.Player(host.firstChild, {
-        videoId: video.video_id,
-        playerVars: {
-          autoplay: 1, controls: 1, rel: 0, playsinline: 1, fs: 0,
-          modestbranding: 1, iv_load_policy: 3,
-        },
-        events: {
-          onReady: (e) => { try { e.target.playVideo() } catch { /* noop */ } },
-          onStateChange: (e) => {
-            if (e.data === window.YT.PlayerState.ENDED) {
-              onWatched(video)
-              // Loop the short in place, the way YouTube Shorts does.
-              try { e.target.seekTo(0); e.target.playVideo() } catch { /* noop */ }
-            }
+      const cur = listRef.current
+      const players = playersRef.current
+
+      // Drop players that scrolled out of the window (or whose slot changed).
+      for (const [idx, entry] of players) {
+        if (!windowIdx.has(idx) || cur[idx]?.video_id !== entry.videoId) {
+          try { entry.player.destroy() } catch { /* noop */ }
+          players.delete(idx)
+        }
+      }
+
+      // Build any missing players in the window.
+      windowIdx.forEach((idx) => {
+        if (players.has(idx)) return
+        const host = slideRefs.current[idx]?.querySelector('.short-host')
+        if (!host) return
+        host.innerHTML = '<div></div>'
+        const video = cur[idx]
+        const player = new YT.Player(host.firstChild, {
+          videoId: video.video_id,
+          playerVars: {
+            autoplay: idx === activeRef.current ? 1 : 0,
+            controls: 1, rel: 0, playsinline: 1, fs: 0,
+            modestbranding: 1, iv_load_policy: 3,
           },
-        },
+          events: {
+            onReady: (e) => {
+              if (idx === activeRef.current) { try { e.target.playVideo() } catch { /* noop */ } }
+            },
+            onStateChange: (e) => {
+              if (e.data === window.YT.PlayerState.ENDED) {
+                onWatchedRef.current(video)
+                // Loop the short in place, the way YouTube Shorts does.
+                try { e.target.seekTo(0); e.target.playVideo() } catch { /* noop */ }
+              }
+            },
+          },
+        })
+        players.set(idx, { player, videoId: video.video_id })
+      })
+
+      // Only the centered short plays; neighbours stay paused and ready.
+      players.forEach((entry, idx) => {
+        try {
+          if (idx === activeRef.current) entry.player.playVideo?.()
+          else entry.player.pauseVideo?.()
+        } catch { /* player mid-transition */ }
       })
     })
-
-    return () => {
-      cancelled = true
-      try { playerRef.current?.destroy() } catch { /* noop */ }
-      playerRef.current = null
-    }
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId])
+  }, [active, listSig])
 
   /* Save resume position + mark watched past the halfway point. */
   useEffect(() => {
     const video = activeVideo
     if (!video) return
     const iv = setInterval(() => {
-      const p = playerRef.current
+      const p = playersRef.current.get(activeRef.current)?.player
       if (!p || typeof p.getCurrentTime !== 'function') return
       try {
         const t = p.getCurrentTime() || 0
@@ -135,7 +183,7 @@ export default function ShortsFeed({
       </button>
 
       {list.map((v, i) => {
-        const isActive = i === active
+        const isMounted = windowIdx.has(i)
         const isWatched = watched.has(v.video_id)
         const logo = channelLogos[v.channel_id]
         return (
@@ -146,7 +194,7 @@ export default function ShortsFeed({
             ref={(el) => { slideRefs.current[i] = el }}
           >
             <div className="short-stage">
-              {isActive
+              {isMounted
                 ? <div className="short-host" />
                 : (
                   <button className="short-thumb" onClick={() => goTo(i)} aria-label={`Play ${v.title || 'short'}`}>
