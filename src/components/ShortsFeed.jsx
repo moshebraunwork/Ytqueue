@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadYouTubeAPI } from '../youtube.js'
 import { downloadVideo } from '../api.js'
 import { BackIcon, DownloadIcon, EyeIcon, TrashIcon, YoutubeIcon } from './Icons.jsx'
@@ -12,10 +12,23 @@ export default function ShortsFeed({
   shorts, watched, channelLogos,
   onProgress, onWatched, onToggleWatched, onDelete, onToast, onClose,
 }) {
+  // Freeze the order the feed opened with. The queue sort already put
+  // newest-first with watched at the back, but re-sorting live (as a short
+  // gets auto-marked watched at the 50% point) would yank slides around
+  // under the user. Deletions still drop out; new arrivals wait for reopen.
+  const [order] = useState(() => shorts)
+  const list = useMemo(() => {
+    const live = new Set(shorts.map((v) => v.video_id))
+    return order.filter((v) => live.has(v.video_id))
+  }, [order, shorts])
+
   const containerRef = useRef(null)
   const slideRefs = useRef([])
   const playerRef = useRef(null)
   const [active, setActive] = useState(0)
+
+  const activeVideo = list[active]
+  const activeId = activeVideo?.video_id
 
   /* Lock the page behind the feed while it's open. */
   useEffect(() => {
@@ -35,11 +48,13 @@ export default function ShortsFeed({
     }, { threshold: [0.6], root: containerRef.current })
     slideRefs.current.forEach((el) => el && io.observe(el))
     return () => io.disconnect()
-  }, [shorts])
+  }, [list])
 
-  /* Mount a fresh player in the active slide; tear it down when we move on. */
+  /* Mount a fresh player in the active slide; tear it down when we move on.
+     Keyed on the active short's id, so auto-marking it watched (which changes
+     `watched` but not the id) never restarts playback. */
   useEffect(() => {
-    const video = shorts[active]
+    const video = activeVideo
     if (!video) return
     let cancelled = false
 
@@ -72,11 +87,12 @@ export default function ShortsFeed({
       try { playerRef.current?.destroy() } catch { /* noop */ }
       playerRef.current = null
     }
-  }, [active, shorts, onWatched])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId])
 
   /* Save resume position + mark watched past the halfway point. */
   useEffect(() => {
-    const video = shorts[active]
+    const video = activeVideo
     if (!video) return
     const iv = setInterval(() => {
       const p = playerRef.current
@@ -89,7 +105,8 @@ export default function ShortsFeed({
       } catch { /* player mid-transition */ }
     }, 2000)
     return () => clearInterval(iv)
-  }, [active, shorts, onProgress, onWatched])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId])
 
   const goTo = useCallback((idx) => {
     slideRefs.current[idx]?.scrollIntoView({ behavior: 'smooth' })
@@ -99,12 +116,12 @@ export default function ShortsFeed({
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') onClose()
-      else if (e.key === 'ArrowDown') { e.preventDefault(); goTo(Math.min(active + 1, shorts.length - 1)) }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); goTo(Math.min(active + 1, list.length - 1)) }
       else if (e.key === 'ArrowUp') { e.preventDefault(); goTo(Math.max(active - 1, 0)) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [active, shorts.length, goTo, onClose])
+  }, [active, list.length, goTo, onClose])
 
   const handleDownload = (video) => {
     const mode = downloadVideo(video.url)
@@ -117,7 +134,7 @@ export default function ShortsFeed({
         <BackIcon size={22} />
       </button>
 
-      {shorts.map((v, i) => {
+      {list.map((v, i) => {
         const isActive = i === active
         const isWatched = watched.has(v.video_id)
         const logo = channelLogos[v.channel_id]

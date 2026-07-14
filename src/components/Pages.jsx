@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import VideoCard from './VideoCard.jsx'
 import ShortsFeed from './ShortsFeed.jsx'
-import { isShort, timeAgo, formatSeconds, parseDuration } from '../api.js'
+import { isShort, timeAgo, formatSeconds, parseDuration, sortQueue } from '../api.js'
 import { PlusIcon } from './Icons.jsx'
 
 /* =================== HOME =================== */
@@ -36,18 +36,13 @@ export function HomePage({
       if (q && !`${v.title} ${v.channel_title}`.toLowerCase().includes(q)) return false
       return true
     })
-    // In "Everything", watched videos sink to the bottom (stable within groups).
-    if (status === 'any') {
-      const fresh = list.filter((v) => !watched.has(v.video_id))
-      const seen = list.filter((v) => watched.has(v.video_id))
-      return [...fresh, ...seen]
-    }
-    return list
+    // Newest first, watched pushed to the back — on every filter.
+    return sortQueue(list, watched)
   }, [videos, kind, status, search, watched, newIds])
 
   const continueWatching = useMemo(() => {
     if (search.trim() || status !== 'any' || kind !== 'all') return []
-    return videos.filter((v) => progress[v.video_id] > 10 && !watched.has(v.video_id))
+    return sortQueue(videos.filter((v) => progress[v.video_id] > 10 && !watched.has(v.video_id)), watched)
   }, [videos, progress, watched, search, status, kind])
 
   const newCount = useMemo(
@@ -183,8 +178,8 @@ export function ChannelsPage({
   }, [videos])
 
   const channelVideos = useMemo(
-    () => (selected ? videos.filter((v) => v.channel_id === selected.channel_id) : []),
-    [videos, selected],
+    () => (selected ? sortQueue(videos.filter((v) => v.channel_id === selected.channel_id), watched) : []),
+    [videos, selected, watched],
   )
 
   const submit = () => {
